@@ -56,12 +56,23 @@ global {
 			both_store <- both_store.setType(true, true);
 			store_ctr <- store_ctr + 1;
 		}
+		// Add all stores to all information centers.
+		list<Store> stores <- Store;
+		loop counter from: 1 to: numberOfInformationCenters {
+			InformationCenter info <- InformationCenter[counter - 1];
+			info <- info.setStores(stores);
+		}
 	}
 }
 
 species InformationCenter {
     string name <- "Information Center";
+    list<Store> stores;
     point location <- [50, 50];
+    
+    action setStores(list<Store> known) {
+    	stores <- known;
+    }
     
     aspect base {
         draw triangle(5) color: rgb("yellow");
@@ -83,7 +94,7 @@ species FestivalGuest skills: [moving] {
     // Should be default but whatever.
     reflex beIdle when: targetPoint = nil {
         if (isThirsty or isHungry) {
-            targetPoint <- InformationCenter[0].location; 
+            targetPoint <- (InformationCenter closest_to location).location; 
         } else {
             do wander;
         }
@@ -93,25 +104,19 @@ species FestivalGuest skills: [moving] {
         do goto target: targetPoint;
     }
 
-    reflex enterInformationCenter when: location distance_to(InformationCenter[0].location) < distanceThreshold {
-	    list<Store> potentialStores;
-	    if (isThirsty and isHungry) {
-	        potentialStores <- Store where (each.hasFood and each.hasDrink);
-	    } else if (isThirsty) {
-	        potentialStores <- Store where (each.hasDrink);
-	    } else if (isHungry) {
-	        potentialStores <- Store where (each.hasFood);
-	    } else {
+    reflex enterInformationCenter when: location distance_to(InformationCenter closest_to location) < distanceThreshold {
+	    if (not isThirsty and not isHungry) {
 	    	return;
 	    }
-	
-	    if (length(potentialStores) > 0) {
-	        Store closestStore <- potentialStores closest_to(self);
-	        targetPoint <- closestStore.location;
-	    } else {
-	        write "ERROR: No suitable store found, check world creation.";
-	        write "TRACE: Conditions are " + isThirsty + ", " + isHungry;
-	    }
+		ask (InformationCenter closest_to location) {
+			list<Store> potentialStores <- stores where (each.hasDrink = myself.isThirsty and each.hasFood = myself.isHungry);
+			if (length(potentialStores) > 0) {
+				myself.targetPoint <- potentialStores closest_to myself.location;
+			} else {
+				write "ERROR: No suitable store found, check world creation.";
+	        	write "TRACE: Conditions are " + myself.isThirsty + ", " + myself.isHungry;
+			}
+		}
 	}
 
     reflex enterStore when: (targetPoint != nil) and location distance_to(targetPoint) < distanceThreshold
