@@ -120,7 +120,7 @@ species FestivalGuest skills: [moving] {
 	}
 
     reflex enterStore when: (targetPoint != nil) and location distance_to(targetPoint) < distanceThreshold
-    and targetPoint != InformationCenter[0].location {
+    and InformationCenter none_matches (each.location = targetPoint) {
     	Store ClosestStore <- Store closest_to(self);
     	// Fix for both hunger and thirst.
         if (isHungry and ClosestStore.hasFood) {
