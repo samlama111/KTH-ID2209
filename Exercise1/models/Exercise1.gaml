@@ -1,7 +1,7 @@
 /**
 * Name: Exercise1
 * Based on the internal empty template. 
-* Author: samlama111
+* Author: samlama111, Paul Hübner
 * Tags: 
 */
 
@@ -101,6 +101,8 @@ species FestivalGuest skills: [moving] {
 	        potentialStores <- Store where (each.hasDrink);
 	    } else if (isHungry) {
 	        potentialStores <- Store where (each.hasFood);
+	    } else {
+	    	return;
 	    }
 	
 	    if (length(potentialStores) > 0) {
@@ -108,6 +110,7 @@ species FestivalGuest skills: [moving] {
 	        targetPoint <- closestStore.location;
 	    } else {
 	        write "ERROR: No suitable store found, check world creation.";
+	        write "TRACE: Conditions are " + isThirsty + ", " + isHungry;
 	    }
 	}
 
