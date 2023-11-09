@@ -96,24 +96,33 @@ species InformationCenter {
 
 species SecurityGuard skills: [moving] {
     string name <- "Security Guard";
-    // TODO: change to a list of agents behaving badly
-    FestivalGuest targetAgent <- nil;
+    list<FestivalGuest> targetAgents;
+    FestivalGuest currentTargetAgent;
     point location;
 
-    action setTarget(FestivalGuest target) {
-        targetAgent <- target;
+    action updateCurrentTargetAgent {
+        if (targetAgents != nil and length(targetAgents) > 0) {
+            currentTargetAgent <- targetAgents[0];
+        } else {
+            currentTargetAgent <- nil;
+        }
     }
     
-    reflex moveToTarget when: (targetAgent != nil) {
-        do goto target: targetAgent.location;
+    reflex moveToTarget when: (currentTargetAgent != nil) {
+        do goto target: currentTargetAgent.location;
     }
 
-    reflex killAgent when: (targetAgent != nil) and location distance_to(targetAgent) < distanceThreshold {
-        ask targetAgent {
-            do die;
-        }
-        targetAgent <- nil;
-    }
+    reflex killAgent when: (currentTargetAgent != nil) and (location distance_to(currentTargetAgent.location) < distanceThreshold) {
+	    FestivalGuest agentToDie <- currentTargetAgent;
+	    targetAgents <- targetAgents where (each != currentTargetAgent);
+	    do updateCurrentTargetAgent;
+	    
+	    if (agentToDie != nil) {
+	        ask agentToDie {
+	            do die;
+	        }
+	    }
+	}
 
     aspect base {
 		draw "S" color: rgb("red") font: font('Default', 12, #bold) ; 
@@ -148,12 +157,9 @@ species FestivalGuest skills: [moving] {
     reflex enterInformationCenter when: location distance_to(InformationCenter closest_to location) < distanceThreshold {
 	    bool isBehavingBadly <- rnd(100) < 10;
         if (isBehavingBadly) {
-            write "I am behaving badly!";
             ask (SecurityGuard closest_to location) {
-                // TODO: Only if no badly behaving agents are alive 
-                if (self.targetAgent = nil) {
-                    self.targetAgent <- myself;
-                }
+                self.targetAgents <- self.targetAgents + myself;
+                do updateCurrentTargetAgent;
             }
         }
         
