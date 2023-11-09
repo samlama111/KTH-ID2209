@@ -21,7 +21,6 @@ global {
 	
 	init {
         create InformationCenter number:numberOfInformationCenters;
-        create SecurityGuard number:numberOfSecurityGuards;
 		create FestivalGuest number:numberOfFestivalGuests;
 		create Store number:numberOfStores;
 				
@@ -30,6 +29,16 @@ global {
         }
         
         loop counter from: 1 to: numberOfSecurityGuards {
+            InformationCenter chosenCenter <- one_of(InformationCenter);
+
+            create SecurityGuard {
+            	location <- [rnd(100), rnd(100)];
+                if (chosenCenter != nil) {
+                    // Place Security guard +- 2 units from the closest center.
+                    location <- [chosenCenter.location.x + rnd(-2, 2, 2), chosenCenter.location.y + rnd(-2, 2, 2)];
+                }
+            }
+            
             SecurityGuard my_agent <- SecurityGuard[counter - 1];
         }
 
@@ -89,8 +98,7 @@ species SecurityGuard skills: [moving] {
     string name <- "Security Guard";
     // TODO: change to a list of agents behaving badly
     FestivalGuest targetAgent <- nil;
-    // TODO: place Security guard +- 2 units from the closest center.
-    point location <- [rnd(100), rnd(100)];
+    point location;
 
     action setTarget(FestivalGuest target) {
         targetAgent <- target;
