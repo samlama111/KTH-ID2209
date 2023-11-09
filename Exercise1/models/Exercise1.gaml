@@ -10,7 +10,7 @@ model Exercise1
 
 
 global {
-    int numberOfInformationCenters <- 1;
+    int numberOfInformationCenters <- 2;
 	int numberOfFestivalGuests <- 10;
 	int numberOfDrinkStores <- 2;
 	int numberOfFoodStores <- 2;
@@ -68,7 +68,7 @@ global {
 species InformationCenter {
     string name <- "Information Center";
     list<Store> stores;
-    point location <- [50, 50];
+    point location <- [rnd(50), rnd(50)];
     
     action setStores(list<Store> known) {
     	stores <- known;
