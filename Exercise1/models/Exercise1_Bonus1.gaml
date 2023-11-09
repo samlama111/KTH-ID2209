@@ -6,7 +6,7 @@
 */
 
 
-model Exercise1
+model Exercise1_Bonus1
 
 
 global {
@@ -86,6 +86,9 @@ species FestivalGuest skills: [moving] {
     int hunger <- rnd(75) max:100 update: hunger + rnd(0, 1);
     bool isThirsty <- thirst > 80 update: thirst > 80;
     bool isHungry <- hunger > 80 update: hunger > 80;
+    point memDrink <- nil;
+    point memFood <- nil;
+    point memBoth <- nil;
 
     action setName(int num) {
 		guestName <- "Guest " + num;
@@ -94,6 +97,21 @@ species FestivalGuest skills: [moving] {
     // Should be default but whatever.
     reflex beIdle when: targetPoint = nil {
         if (isThirsty or isHungry) {
+        	if (rnd(4) != 0) {
+        		// We can use our memory.
+        		if (isThirsty and isHungry) {
+        			targetPoint <- memBoth;
+        		} else if (isThirsty and not isHungry) {
+        			targetPoint <- memDrink;
+        		} else if (not isThirsty and isHungry) {
+        			targetPoint <- memFood;
+        		}
+        		// Did we actually set the point?
+        		if (targetPoint != nil) {
+        			return;
+        		}
+        	}
+        	// We don't have a memory for this yet, OR we can't use it.
             targetPoint <- (InformationCenter closest_to location).location; 
         } else {
             do wander;
@@ -134,7 +152,16 @@ species FestivalGuest skills: [moving] {
         // If we updated at least one of them, it should be nil.
         if (targetPoint != nil) {
             write "ERROR: Store does not have what I need.";
+            write "TRACE: I need " + isThirsty + " & " + isHungry + ", store has " + ClosestStore.hasDrink + ", " + ClosestStore.hasFood;
         }
+        // Update memory.
+		if (ClosestStore.hasDrink and ClosestStore.hasFood) {
+			memBoth <- ClosestStore.location;
+		} else if (ClosestStore.hasDrink) {
+			memDrink <- ClosestStore.location;
+		} else if (ClosestStore.hasFood) {
+			memFood <- ClosestStore.location;
+		}
     }
 
     aspect base {
