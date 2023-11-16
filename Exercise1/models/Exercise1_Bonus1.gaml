@@ -17,6 +17,9 @@ global {
 	int numberOfBothStores <- 2;
 	int numberOfStores <- numberOfDrinkStores + numberOfFoodStores + numberOfBothStores;
 	int distanceThreshold <- 2;
+	int cyc <- 0 update: cyc + 1;
+	int maximumCycles <- 10000;
+	int rememberPercentage <- 100;
 	
 	init {
         create InformationCenter number:numberOfInformationCenters;
@@ -63,6 +66,12 @@ global {
 			info <- info.setStores(stores);
 		}
 	}
+	
+	reflex death when: cyc = maximumCycles {
+		ask FestivalGuest {
+			do die;
+		}
+	}
 }
 
 species InformationCenter {
@@ -89,6 +98,7 @@ species FestivalGuest skills: [moving] {
     point memDrink <- nil;
     point memFood <- nil;
     point memBoth <- nil;
+    int stepCounter <- 0;
 
     action setName(int num) {
 		guestName <- "Guest " + num;
@@ -97,7 +107,8 @@ species FestivalGuest skills: [moving] {
     // Should be default but whatever.
     reflex beIdle when: targetPoint = nil {
         if (isThirsty or isHungry) {
-        	if (rnd(4) != 0) {
+        	
+        	if (rnd(100) <= rememberPercentage) {
         		// We can use our memory.
         		if (isThirsty and isHungry) {
         			targetPoint <- memBoth;
@@ -119,6 +130,7 @@ species FestivalGuest skills: [moving] {
     }
 
     reflex moveToTarget when: (targetPoint != nil) {
+    	stepCounter <- stepCounter + 1;
         do goto target: targetPoint;
     }
 
@@ -153,6 +165,9 @@ species FestivalGuest skills: [moving] {
         if (targetPoint != nil) {
             write "ERROR: Store does not have what I need.";
             write "TRACE: I need " + isThirsty + " & " + isHungry + ", store has " + ClosestStore.hasDrink + ", " + ClosestStore.hasFood;
+        } else {
+        	write stepCounter;
+        	stepCounter <- 0;
         }
         // Update memory.
 		if (ClosestStore.hasDrink and ClosestStore.hasFood) {
@@ -213,4 +228,6 @@ experiment myExperiment type:gui {
 			species Store aspect:base;
 		}
 	}
+
+
 }
