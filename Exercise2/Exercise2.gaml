@@ -31,7 +31,7 @@ species Bidder skills: [fipa] {
 			if (budget >= wanted) {
 				// If we can afford it, we accept.
 				write "[" + name + "] My budget is " + budget + ", so I accept";
-				do propose message: incoming contents: ["I bid"];
+				do propose message: incoming contents: ["I bid", wanted];
 			} else {
 				// If we can't, we reject. Perhaps this can be omitted?
 				write "[" + name + "] My budget is " + budget + ", so I refuse";
@@ -43,7 +43,7 @@ species Bidder skills: [fipa] {
 	reflex bidWasAccepted when: !empty(accept_proposals) {
 		// Bid was accepted here, so we need to send an inform.
 		loop accepted over: accept_proposals {
-			write "[" + name + "] My bid was accepted: " + accepted.contents;
+			write "[" + name + "] My bid was accepted: " + accepted.contents[0];
 			do inform message: accepted contents: ["Here is my address", "Spreeweg 1, Berlin, 10557 Germany"];
 		}
 	}
@@ -51,7 +51,7 @@ species Bidder skills: [fipa] {
 	reflex bidWasRejected when: !empty(reject_proposals) {
 		// Bid was rejected, that's fine, we just mark as read.
 		loop rejected over: reject_proposals {
-			write "[" + name + "] My bid was rejected: " + rejected.contents;
+			write "[" + name + "] My bid was rejected: " + rejected.contents[0];
 		}
 	}
 	
@@ -71,7 +71,13 @@ species Auctioneer skills: [fipa] {
 		loop positive over: proposes {
 			if (winner = nil) {
 				winner <- positive.sender;
-				do accept_proposal message: positive contents: ["Let me know your shipping address"];
+				// We still need to check if the bid is serious.
+				if (int(positive.contents[1]) >= currentPrice) {
+					write "[" + name + "] Winner found, it is " + winner.name;
+					do accept_proposal message: positive contents: ["Let me know your shipping address"];
+				} else {
+					do reject_proposal message: positive contents: ["You think you can try and cheat me?"];
+				}
 			} else {
 				do reject_proposal message: positive contents: ["Sorry, someone else was faster"];
 			}
@@ -106,12 +112,8 @@ species Auctioneer skills: [fipa] {
 			// Regular bidding.
 			do initiateBiddingRound;
 		} else if (round < maximumAuctionRounds) {
-			// Checking bids.
-			if (winner != nil) {
-				write "[" + name + "] Winner found, it is " + winner.name;
-				
-			} else {
-				// Decrease the price possibly, and ask people to bid.
+			// If there's no winner, we can decrease here.
+			if (winner = nil) {
 				currentPrice <- max(minimumPrice, currentPrice - 250);
 				do initiateBiddingRound;
 			}
