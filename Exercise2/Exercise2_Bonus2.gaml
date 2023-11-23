@@ -97,7 +97,6 @@ species DutchAuctioneer parent: Auctioneer {
 				// We still need to check if the bid is serious.
 				if (int(positive.contents[1]) >= currentPrice) {
 					winner <- positive.sender;
-					winnerPrice <- int(positive.contents[1]);
 					write "[" + name + "] Winner found, it is " + winner.name;
 					do accept_proposal message: positive contents: ["Let me know your shipping address"];
 				} else {
@@ -145,7 +144,6 @@ species Auctioneer skills: [fipa] {
 	string state <- "init" among: ["init", "start", "bidding"];
 	list<agent> participants <- [];
 	agent winner <- nil;
-	int winnerPrice <- -1;
 	
 	action determineWinner virtual: true;
 	action firstRound virtual: true;
@@ -200,7 +198,6 @@ species Auctioneer skills: [fipa] {
 			// Reset some of the variables.
 			participants <- [];
 			winner <- nil;
-			winnerPrice <- -1;
 			// Send out a join request to all of the bidders.
 			do start_conversation to: globalBidders protocol: 'fipa-contract-net' performative: 'cfp' contents: ["notify", "There is a new auction starting"];
 		} else if (state = "start") {
