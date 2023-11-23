@@ -106,21 +106,23 @@ species Auctioneer skills: [fipa] {
 	reflex callback {
 		if (round = 0) {
 			// The first round is special because we need to set the price of what we are currently selling.
-			currentPrice <- rnd(1000, 3000);
+			currentPrice <- rnd(1000, 2500);
 			minimumPrice <- currentPrice - rnd(0, 600);
 			winner <- nil;
 			// Regular bidding.
 			do initiateBiddingRound;
-		} else if (round < maximumAuctionRounds) {
-			// If there's no winner, we can decrease here.
-			if (winner = nil) {
-				currentPrice <- max(minimumPrice, currentPrice - 250);
+		} else if (winner = nil) {
+			// Decrease the price by the set amount.
+			currentPrice <- currentPrice - 250;
+			// Would we, by decreasing, stay above the minimum?
+			if (currentPrice >= minimumPrice) {
+				// Decrease is legal, let us perform another bidding round.
 				do initiateBiddingRound;
+			} else {
+				// Nobody could bid on this auction, so we discard it.
+				write "[" + name + "] Nobody bid on the auction, donating the item to charity";
+				round <- 0;
 			}
-		} else {
-			// Nobody could bid on this auction, so we discard it.
-			write "[" + name + "] Nobody bid on the auction, donating the item to charity";
-			round <- 0;
 		}
 	}
 	
