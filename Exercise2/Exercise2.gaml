@@ -9,9 +9,7 @@
 model Exercise2
 
 global {
-	int numberOfBidders <- 3;
-	int distanceThreshold <- 2;
-	int maximumAuctionRounds <- 10;
+	int numberOfBidders <- 3;	
 	
 	init {
 		create Bidder number: numberOfBidders;
@@ -23,7 +21,7 @@ species Bidder skills: [fipa] {
 	string agentName <- "undefined";
 	int budget <- rnd(0, 2000);
 	
-	reflex receiveBiddingRound when: !empty(cfps) {
+	reflex receiveMessage when: !empty(cfps) {
 		// The current bidding process.
 		loop incoming over: cfps {
 			// Is it an auction start notification or is it an offer to bid?
