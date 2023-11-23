@@ -13,7 +13,7 @@ global {
 	list<agent> globalBidders;
 	
 	init {
-		do dutch;
+		do vickrey;
 	}
 	
 	action dutch {
@@ -22,6 +22,17 @@ global {
 		globalBidders <- bidders;
 	}
 	
+	action sealed {
+		create SealedAuctioneer;
+		create SealedBidder number: numberOfBidders returns: bidders;
+		globalBidders <- bidders;
+	}
+	
+	action vickrey {
+		create VickreyAuctioneer;
+		create SealedBidder number: numberOfBidders returns: bidders;
+		globalBidders <- bidders;
+	}
 }
 
 species DutchBidder parent: Bidder {
@@ -38,6 +49,13 @@ species DutchBidder parent: Bidder {
 			write "[" + name + "] My budget is " + budget + ", so I refuse";
 			do refuse message: bid contents: ["I reject"];
 		}
+	}
+}
+
+species SealedBidder parent: Bidder {
+	action bidding(message bid) {
+		write "[" + name + "] I will bid my budget of " + budget;
+		do propose message: bid contents: ["I bid", budget];
 	}
 }
 
@@ -62,7 +80,6 @@ species Bidder skills: [fipa] {
 			} else {
 				write "[" + name + "] Unknown CFP: " + msg;
 			}
-
 		}
 	}
 	
@@ -137,6 +154,84 @@ species DutchAuctioneer parent: Auctioneer {
 	action initiateBiddingRound {
 		write "[" + name + "] Going for " + currentPrice + " (minimum " + minimumPrice + ")";
 		do start_conversation to: participants protocol: 'fipa-contract-net' performative: 'cfp' contents: ["offer", currentPrice];
+	}
+}
+
+species SealedAuctioneer parent: Auctioneer {
+	action determineWinner {
+		// Variables to keep track.
+		agent bestBidder <- nil;
+		int bestBid <- -1;
+		list<message> local <- [];
+		// Do we have anything?
+		loop positive over: proposes {
+			add positive to: local;
+			int bid <- int(positive.contents[1]);
+			if (bid > bestBid) {
+				bestBidder <- agent(positive.sender);
+				bestBid <- bid;
+			}
+		}
+		// Now we let everyone know the outcome.
+		loop msg over: local {
+			if (msg.sender = bestBidder) {
+				winner <- msg.sender;
+				write "[" + name + "] Winner found, it is " + winner.name;
+				do accept_proposal message: msg contents: ["Let me know your shipping address"];
+			} else {
+				do reject_proposal message: msg contents: ["Sorry, someone else bid more"];
+			}
+			string _ <- msg.contents;
+		}
+		winner <- bestBidder;
+	}
+	
+	action firstRound {
+		// A singular bidding round.
+		state <- "bidding";
+		do start_conversation to: participants protocol: 'fipa-contract-net' performative: 'cfp' contents: ["offer"];
+	}
+	
+	action otherRounds {
+		error message: "Can't go into more rounds in a sealed auction";
+	}
+}
+
+species VickreyAuctioneer parent: Auctioneer {
+	action determineWinner {
+		// Variables to keep track.
+		list<list> agentsBidsMessages <- [];
+		// Do we have anything?
+		loop positive over: proposes {
+			add [agent(positive.sender), int(positive.contents[1]), positive] to: agentsBidsMessages;
+		}
+		int lastIndex <- length(agentsBidsMessages) - 1;
+		int secondLastIndex <- max(0, lastIndex - 1); // Special case for singleton list.
+		list<list> sortedBids <- agentsBidsMessages sort_by (int(each at 1));
+		agent bestBidder <- agent((sortedBids at lastIndex) at 0);
+		int secondBestPrice <- int((sortedBids at secondLastIndex) at 1);
+		// Now we let everyone know the outcome.
+		loop msg over: agentsBidsMessages accumulate (message(each at 2)) {
+			if (msg.sender = bestBidder) {
+				winner <- msg.sender;
+				write "[" + name + "] Winner found, it is " + winner.name + " who has to pay " + secondBestPrice;
+				do accept_proposal message: msg contents: ["Let me know your shipping address"];
+			} else {
+				do reject_proposal message: msg contents: ["Sorry, someone else bid more"];
+			}
+			string _ <- msg.contents;
+		}
+		winner <- bestBidder;
+	}
+	
+	action firstRound {
+		// A singular bidding round.
+		state <- "bidding";
+		do start_conversation to: participants protocol: 'fipa-contract-net' performative: 'cfp' contents: ["offer"];
+	}
+	
+	action otherRounds {
+		error message: "Can't go into more rounds in a sealed auction";
 	}
 }
 
