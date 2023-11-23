@@ -103,9 +103,9 @@ species Auctioneer skills: [fipa] {
 	reflex receivePositiveBid when: !empty(proposes) {
 		loop positive over: proposes {
 			if (winner = nil) {
-				winner <- positive.sender;
 				// We still need to check if the bid is serious.
 				if (int(positive.contents[1]) >= currentPrice) {
+					winner <- positive.sender;
 					write "[" + name + "] Winner found, it is " + winner.name;
 					do accept_proposal message: positive contents: ["Let me know your shipping address"];
 				} else {
