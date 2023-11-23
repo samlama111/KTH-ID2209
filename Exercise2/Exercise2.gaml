@@ -26,17 +26,30 @@ species Bidder skills: [fipa] {
 	reflex receiveBiddingRound when: !empty(cfps) {
 		// The current bidding process.
 		loop incoming over: cfps {
-			int wanted <- int(incoming.contents[1]);
-			write "[" + name + "] Received a CFP initiation, they want " + wanted;
-			if (budget >= wanted) {
-				// If we can afford it, we accept.
-				write "[" + name + "] My budget is " + budget + ", so I accept";
-				do propose message: incoming contents: ["I bid", wanted];
+			// Is it an auction start notification or is it an offer to bid?
+			list msg <- incoming.contents;
+			if (msg[0] = "notify") {
+				// New auction is starting, do we want to join?
+				write "[" + name + "] Received word of a new auction, I would like to join!";
+				do propose message: incoming contents: ["I would like to join"];
+				//do refuse message: incoming contents: ["Sorry, not interested"];
+			} else if (msg[0] = "offer") {
+				// Auction we are part of is doing some bidding.
+				int wanted <- int(incoming.contents[1]);
+				write "[" + name + "] Received a bid offer, they want " + wanted;
+				if (budget >= wanted) {
+					// If we can afford it, we accept.
+					write "[" + name + "] My budget is " + budget + ", so I accept";
+					do propose message: incoming contents: ["I bid", wanted];
+				} else {
+					// If we can't, we reject. Perhaps this can be omitted?
+					write "[" + name + "] My budget is " + budget + ", so I refuse";
+					do refuse message: incoming contents: ["I reject"];
+				}
 			} else {
-				// If we can't, we reject. Perhaps this can be omitted?
-				write "[" + name + "] My budget is " + budget + ", so I refuse";
-				do refuse message: incoming contents: ["I reject"];
+				write "[" + name + "] Unknown CFP: " + msg;
 			}
+
 		}
 	}
 	
@@ -61,10 +74,32 @@ species Bidder skills: [fipa] {
 }
 
 species Auctioneer skills: [fipa] {
-	int round <- 0;
+	string state <- "init" among: ["init", "start", "bidding"];
+	list<agent> participants <- [];
 	agent winner <- nil;
 	int currentPrice;
 	int minimumPrice;
+	
+	reflex receiveJoin when: state = "init" and (!empty(proposes) or !empty(refuses)) {
+		loop join over: proposes {
+			// This agent wants to join our auction.
+			string _ <- join.contents;
+			add agent(join.sender) to: participants;
+		}
+		loop refusal over: refuses {
+			// This agent will not join, we just flush the message.
+			string _ <- refusal.contents;
+		}
+		// We can only start the auction if there are actually participants.
+		if (!empty(participants)) {
+			// At this point, we can start the auction.
+			state <- "start";
+		} else {
+			// Nobody wanted to join, new auction.
+			write "[" + name + "] Nobody was interested, new auction time";
+			state <- "init";
+		}
+	}
 	
 	// Receive responses FIRST.
 	reflex receivePositiveBid when: !empty(proposes) {
@@ -99,16 +134,23 @@ species Auctioneer skills: [fipa] {
 			write "[" + name + "] Sending the item to " + agent(inform.sender).name + "'s address: " + inform.contents[1];
 		}
 		// Reset everything, we can start a new auction.
-		round <- 0;
+		state <- "init";
 	}
 	
 	// NOW we can trigger the main event loop for the auctioneer.
 	reflex callback {
-		if (round = 0) {
-			// The first round is special because we need to set the price of what we are currently selling.
-			currentPrice <- rnd(1000, 2500);
-			minimumPrice <- currentPrice - rnd(0, 600);
+		if (state = "init") {
+			// Reset some of the variables.
+			participants <- [];
 			winner <- nil;
+			// Send out a join request to all of the bidders.
+			do start_conversation to: list(Bidder) protocol: 'fipa-contract-net' performative: 'cfp' contents: ["notify", "There is a new auction starting"];
+		} else if (state = "start") {
+			// Here we actually start the auction.
+			currentPrice <- rnd(1000, 2250);
+			minimumPrice <- currentPrice - rnd(0, 600);
+			// Set the state to bidding.
+			state <- "bidding";
 			// Regular bidding.
 			do initiateBiddingRound;
 		} else if (winner = nil) {
@@ -120,17 +162,16 @@ species Auctioneer skills: [fipa] {
 				do initiateBiddingRound;
 			} else {
 				// Nobody could bid on this auction, so we discard it.
-				write "[" + name + "] Nobody bid on the auction, donating the item to charity";
-				round <- 0;
+				write "[" + name + "] I could not sell this item";
+				state <- "init";
 			}
 		}
 	}
 	
 	// Sends a CFP message to all participants for a specific number.
 	action initiateBiddingRound {
-		write "[" + name + "] Starting new bidding for " + currentPrice + ", minimum " + minimumPrice;
-		do start_conversation to: list(Bidder) protocol: 'fipa-contract-net' performative: 'cfp' contents: ['All Bidders: Send me your proposals!', currentPrice];
-		round <- round + 1;
+		write "[" + name + "] Going for " + currentPrice + " (minimum " + minimumPrice + ")";
+		do start_conversation to: participants protocol: 'fipa-contract-net' performative: 'cfp' contents: ["offer", currentPrice];
 	}
 	
 	aspect base {
