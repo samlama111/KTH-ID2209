@@ -11,7 +11,7 @@ model Exercise3NQueens
 
 global {
 	
-	int numberOfQueens <- 7 min: 4 max: 20;
+	int numberOfQueens <- 14 min: 4 max: 20;
 
 	init {
 		int index <- 0;
@@ -53,7 +53,7 @@ species Queen skills: [fipa] {
 			if (act = "activate") {
 				do passiveActivate;
 			} else if (act = "backtrack") {
-				write("[" + id + "] Received backtrack signal");
+				//write("[" + id + "] Received backtrack signal");
 				do passiveActivate;
 			} else {
 				error "Unknown action: " + act;
@@ -74,14 +74,14 @@ species Queen skills: [fipa] {
 	reflex activePlace when: active and myCell = nil {
 		// See where we can go.
 		list<ChessBoard> locs <- utilGetPossibleLocations();
-		write("[" + id + "] Need to determine my location");
-		write("[" + id + "] Possible: ");
-		loop loc over: locs {
-			write("- " + utilStr(loc));
-		}
+		//write("[" + id + "] Need to determine my location");
+		//write("[" + id + "] Possible: ");
+		//loop loc over: locs {
+			//write("- " + utilStr(loc));
+		//}
 		// If there are NO possible locations, we need to backtrack.
 		if (empty(locs)) {
-			write("[" + id + "] I have no options, backtrack");
+			//write("[" + id + "] I have no options, backtrack");
 			// Wipe our memory so next time we are activated we can go wherever.
 			memory <- [];
 			// Deactivate and send backtrack.
@@ -91,14 +91,14 @@ species Queen skills: [fipa] {
 			return;
 		}
 		// Otherwise, we just pick the first one!
-		do activeMakeMove(first(locs));
+		do activeMakeMove(first (1 among locs));
 	}
 	
 	action activeMakeMove(ChessBoard pos) {
 		// Perform the move!
 		myCell <- pos;
 		add pos to: memory;
-		write("[" + id + "] Going to: " + utilStr(pos));
+		//write("[" + id + "] Going to: " + utilStr(pos));
 		// Let the next one be placed.
 		active <- false;
 		do activeSendActivateSuccessor;
@@ -107,6 +107,8 @@ species Queen skills: [fipa] {
 	action activeSendActivateSuccessor {
 		if (succ != nil) {
 			do start_conversation to: [succ] protocol: "fipa-propose" performative: "inform" contents: ["activate"];
+		} else {
+			write("We are done after " + time + " cycles");
 		}
 	}
 	
@@ -129,7 +131,7 @@ species Queen skills: [fipa] {
 				add queen.myCell to: queens;
 			}
 		}
-		write("[" + id + "] Checking against " + length(queens) + " queens");
+		//write("[" + id + "] Checking against " + length(queens) + " queens");
 		list<ChessBoard> possible <- [];
 		loop x from: 1 to: numberOfQueens {
 			loop y from: 1 to: numberOfQueens {
