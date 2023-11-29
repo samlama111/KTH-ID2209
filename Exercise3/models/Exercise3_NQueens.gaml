@@ -8,27 +8,15 @@
 
 model Exercise3NQueens
 
-/* Insert your model definition here */
-// communication:
-//
-// checking locations:
-//   propose: position [<location>] <sender>
-//   --> pass it down the chain
-//   --> recursively go down the chain
-//   --> accept/reject
-//
-// enumerate all possible locations
-// if stuck, change active and move that
-//   
 
 global {
 	
-	int numberOfQueens <- 4 min: 4 max: 20;
+	int numberOfQueens <- 7 min: 4 max: 20;
 
 	init {
 		int index <- 0;
 		create Queen number: numberOfQueens;
-		
+		// Create all queens and set them up as a doubly linked list.
 		loop counter from: 1 to: numberOfQueens {
 			Queen queen <- Queen[counter - 1];
 			Queen pred <- nil;
@@ -39,49 +27,164 @@ global {
 			queen <- queen.init1(index, pred);
 			index <- index + 1;
 		}
-		Queen[numberOfQueens - 1].active <- true;
+		// Activate the first queen.
+		Queen[0].active <- true;
 	}
 }
 
 
 species Queen skills: [fipa] {
-	ChessBoard myCell; 
+	ChessBoard myCell <- nil; 
 	int id; 
-	int index <- 0;
 	bool active <- false;
-	list<list<int>> knownToBeBad <- [];
 	Queen pred;
 	Queen succ;
-	   
-//	reflex updateCell {
-//		write('id' + id);
-//		write('X: ' + myCell.grid_x + ' - Y: ' + myCell.grid_y);
-//		myCell <- ChessBoard[myCell.grid_x,  mod(index, numberOfQueens)];
-//		location <- myCell.location;
-//		index <- index + 1;
-//	}
-
-	reflex writeBack when: index = 0 {
-		write("ID: " + id);
-		if (pred != nil) {
-			write("  Predecessor: " + pred.id);
+	list<ChessBoard> memory <- [];
+	
+	//
+	// PASSIVE (NOT THE ONE BEING PLACED) FUNCTIONALITY.
+	//
+	
+	reflex passiveIncoming when: !active and !empty(informs) {
+		loop msg over: informs {
+			string act <- msg.contents[0];
+			// Activate and backtrack do the same thing.
+			// If statement here in case needed in the future.
+			if (act = "activate") {
+				do passiveActivate;
+			} else if (act = "backtrack") {
+				write("[" + id + "] Received backtrack signal");
+				do passiveActivate;
+			} else {
+				error "Unknown action: " + act;
+			}
 		}
+	}
+	
+	action passiveActivate {
+		myCell <- nil;
+		active <- true;
+	}
+	
+	
+	//
+	// ACTIVE (THE ONE BEING PLACED) FUNCTIONALITY.
+	//
+	
+	reflex activePlace when: active and myCell = nil {
+		// See where we can go.
+		list<ChessBoard> locs <- utilGetPossibleLocations();
+		write("[" + id + "] Need to determine my location");
+		write("[" + id + "] Possible: ");
+		loop loc over: locs {
+			write("- " + utilStr(loc));
+		}
+		// If there are NO possible locations, we need to backtrack.
+		if (empty(locs)) {
+			write("[" + id + "] I have no options, backtrack");
+			// Wipe our memory so next time we are activated we can go wherever.
+			memory <- [];
+			// Deactivate and send backtrack.
+			active <- false;
+			myCell <- nil;
+			do activeSendBacktrack;
+			return;
+		}
+		// Otherwise, we just pick the first one!
+		do activeMakeMove(first(locs));
+	}
+	
+	action activeMakeMove(ChessBoard pos) {
+		// Perform the move!
+		myCell <- pos;
+		add pos to: memory;
+		write("[" + id + "] Going to: " + utilStr(pos));
+		// Let the next one be placed.
+		active <- false;
+		do activeSendActivateSuccessor;
+	}
+	
+	action activeSendActivateSuccessor {
 		if (succ != nil) {
-			write("  Successor: " + succ.id);
+			do start_conversation to: [succ] protocol: "fipa-propose" performative: "inform" contents: ["activate"];
 		}
 	}
-
-	reflex negativePositions {
-		
+	
+	action activeSendBacktrack {
+		if (pred != nil) {
+			do start_conversation to: [pred] protocol: "fipa-propose" performative: "inform" contents: ["backtrack"];
+		} else {
+			error "Unsolveable problem";
+		}
 	}
-
-	reflex queryNearbyPositions {
-		
+	
+	//
+	// UTILITY ACTIONS.
+	//
+	
+	action utilGetPossibleLocations type: list<ChessBoard> {
+		list<ChessBoard> queens <- [];
+		loop queen over: Queen {
+			if (queen.myCell != nil) {
+				add queen.myCell to: queens;
+			}
+		}
+		write("[" + id + "] Checking against " + length(queens) + " queens");
+		list<ChessBoard> possible <- [];
+		loop x from: 1 to: numberOfQueens {
+			loop y from: 1 to: numberOfQueens {
+				ChessBoard cell <- ChessBoard[x - 1, y - 1];
+				// Ignore positions we have visited before.
+				if (memory contains cell) {
+					continue;
+				}
+				// Possible if there is no queen.
+				if (utilIsMovePossible(cell, queens)) {
+					add cell to: possible;
+				}
+			}
+		}
+		return possible;
 	}
+	
+	action utilIsMovePossible(ChessBoard candidate, list<ChessBoard> queens) type: bool {
+		loop queen over: queens {
+			bool killedHere <- utilsWillQueenBeKilled(candidate, queen);
+			if (killedHere) {
+				//write("" + candidate + " is incomp with " + queen);
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	// https://stackoverflow.com/questions/41432956/checking-for-horizontal-vertical-and-diagonal-pairs-given-coordinates
+	action utilsWillQueenBeKilled(ChessBoard candidate, ChessBoard queen) type: bool {
+		int x1 <- candidate.grid_x;
+		int y1 <- candidate.grid_y;
+		int x2 <- queen.grid_x;
+		int y2 <- queen.grid_y;
+		int dy <- y2 - y1;
+		int dx <- x2 - x1;
+		bool clause1 <- dx = 0;
+		bool clause2 <- dy = 0;
+		bool clause3 <- dx = dy;
+		bool clause4 <- dx = -dy;
+		bool res <- clause1 or clause2 or clause3 or clause4;
+		//write("Debug: " + clause1 + clause2 + clause3 + clause4);
+		return res;
+	}
+	
+	action utilStr(ChessBoard pos) type: string {
+		return "X=" + pos.grid_x + ", Y=" + pos.grid_y;
+	}
+	
+	// 
+	// CONSTRUCTION ACTIONS.
+	//
 	
 	action init1(int queenId, Queen predecessor) type: Queen {
 		id <- queenId;
-		myCell <- ChessBoard[id, id];
 		pred <- predecessor;
 		return self;
 	}
@@ -92,26 +195,23 @@ species Queen skills: [fipa] {
 	}
 	
 	aspect base {
-		float size <- 30 / numberOfQueens;
-		if (active) {
+		if (myCell != nil) {
+			location <- myCell.location;
+			float size <- 30 / numberOfQueens;
 			draw circle(size) color: #magenta;
-		} else {
-			draw circle(size) color: #pink;
 		}
-		location <- myCell.location ;
 	}
 }
 	
 	
-grid ChessBoard width: numberOfQueens height: numberOfQueens { 
+grid ChessBoard width: numberOfQueens height: numberOfQueens neighbors: 8 { 
 	init{
-		if(even(grid_x) and even(grid_y) or !even(grid_x) and !even(grid_y)){
+		if (even(grid_x) and even(grid_y) or !even(grid_x) and !even(grid_y)){
 			color <- #black;
 		} else {
 			color <- #white;
 		}
-	}		
-
+	}
 }
 
 experiment NQueensProblem type: gui {
