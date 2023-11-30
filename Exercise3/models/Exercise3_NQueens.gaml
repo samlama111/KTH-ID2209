@@ -11,7 +11,7 @@ model Exercise3NQueens
 
 global {
 	
-	int numberOfQueens <- 14 min: 4 max: 20;
+	int numberOfQueens <- 13 min: 4 max: 20;
 
 	init {
 		int index <- 0;
@@ -39,6 +39,7 @@ species Queen skills: [fipa] {
 	bool active <- false;
 	Queen pred;
 	Queen succ;
+	list<ChessBoard> others <- [];
 	list<ChessBoard> memory <- [];
 	
 	//
@@ -48,22 +49,24 @@ species Queen skills: [fipa] {
 	reflex passiveIncoming when: !active and !empty(informs) {
 		loop msg over: informs {
 			string act <- msg.contents[0];
-			// Activate and backtrack do the same thing.
-			// If statement here in case needed in the future.
+			// Activate and backtrack do the same thing, mostly.
 			if (act = "activate") {
-				do passiveActivate;
+				list<ChessBoard> queens <- msg.contents[1];
+				do passiveActivate(queens);
 			} else if (act = "backtrack") {
-				//write("[" + id + "] Received backtrack signal");
-				do passiveActivate;
+				write("[" + id + "] Received backtrack signal");
+				// Our previous knowledge is still correct, apply it to ourselves.
+				do passiveActivate(others);
 			} else {
 				error "Unknown action: " + act;
 			}
 		}
 	}
 	
-	action passiveActivate {
+	action passiveActivate(list<ChessBoard> queens) {
 		myCell <- nil;
 		active <- true;
+		others <- queens;
 	}
 	
 	
@@ -74,16 +77,17 @@ species Queen skills: [fipa] {
 	reflex activePlace when: active and myCell = nil {
 		// See where we can go.
 		list<ChessBoard> locs <- utilGetPossibleLocations();
-		//write("[" + id + "] Need to determine my location");
-		//write("[" + id + "] Possible: ");
-		//loop loc over: locs {
-			//write("- " + utilStr(loc));
-		//}
+		write("[" + id + "] Need to determine my location");
+		write("[" + id + "] Possible: ");
+		loop loc over: locs {
+			write("- " + utilStr(loc));
+		}
 		// If there are NO possible locations, we need to backtrack.
 		if (empty(locs)) {
 			//write("[" + id + "] I have no options, backtrack");
 			// Wipe our memory so next time we are activated we can go wherever.
 			memory <- [];
+			others <- [];
 			// Deactivate and send backtrack.
 			active <- false;
 			myCell <- nil;
@@ -91,14 +95,14 @@ species Queen skills: [fipa] {
 			return;
 		}
 		// Otherwise, we just pick the first one!
-		do activeMakeMove(first (1 among locs));
+		do activeMakeMove(first(locs));
 	}
 	
 	action activeMakeMove(ChessBoard pos) {
 		// Perform the move!
 		myCell <- pos;
 		add pos to: memory;
-		//write("[" + id + "] Going to: " + utilStr(pos));
+		write("[" + id + "] Going to: " + utilStr(pos));
 		// Let the next one be placed.
 		active <- false;
 		do activeSendActivateSuccessor;
@@ -106,9 +110,10 @@ species Queen skills: [fipa] {
 	
 	action activeSendActivateSuccessor {
 		if (succ != nil) {
-			do start_conversation to: [succ] protocol: "fipa-propose" performative: "inform" contents: ["activate"];
+			list<ChessBoard> queens <- others + [myCell];
+			do start_conversation to: [succ] protocol: "fipa-propose" performative: "inform" contents: ["activate", queens];
 		} else {
-			write("We are done after " + time + " cycles");
+			write("We are done after " + (int(time) + 1) + " cycles");
 		}
 	}
 	
@@ -125,28 +130,64 @@ species Queen skills: [fipa] {
 	//
 	
 	action utilGetPossibleLocations type: list<ChessBoard> {
-		list<ChessBoard> queens <- [];
-		loop queen over: Queen {
-			if (queen.myCell != nil) {
-				add queen.myCell to: queens;
+		list<ChessBoard> potential <- [];
+		// We divide into cases.
+		// This is to optimize.
+		// 1) First and last queen -- these ones can go ANYWHERE on the board.
+		// 2) All the other queens -- these ones can only take 2-1 (knight move) or 3-1 (???) positions from existing queens.
+		if (pred = nil or succ = nil) {
+			// Go through every possible cell on the board.
+			loop i from: 1 to: numberOfQueens {
+				loop j from: 1 to: numberOfQueens {
+					ChessBoard cell <- ChessBoard[i - 1, j - 1];
+					// If we've already been here, we skip.
+					if (memory contains cell) {
+						continue;
+					}
+					// If this conflicts with other queens (only last one).
+					if (succ = nil and not utilIsMovePossible(cell, others)) {
+						continue;
+					}
+					add cell to: potential;
+				}
+			}
+		} else {
+			// For every queen, add the location that are a knight away.
+			loop other over: others {
+				do utilAddHopLocationsForQueen(2, potential, other, others);
+				do utilAddHopLocationsForQueen(3, potential, other, others);
 			}
 		}
-		//write("[" + id + "] Checking against " + length(queens) + " queens");
-		list<ChessBoard> possible <- [];
-		loop x from: 1 to: numberOfQueens {
-			loop y from: 1 to: numberOfQueens {
-				ChessBoard cell <- ChessBoard[x - 1, y - 1];
-				// Ignore positions we have visited before.
-				if (memory contains cell) {
-					continue;
-				}
-				// Possible if there is no queen.
-				if (utilIsMovePossible(cell, queens)) {
-					add cell to: possible;
-				}
+		return potential;
+	}
+	
+	// https://www.geeksforgeeks.org/possible-moves-knight/
+	action utilAddHopLocationsForQueen(int n, list<ChessBoard> potential, ChessBoard queen, list<ChessBoard> queens) {
+		list<int> dX <- [n, 1, -1, -n, -n, -1, 1, n];
+		list<int> dY <- [1, n, n, 1, -1, -n, -n, -1];
+		loop i from: 1 to: 8 {
+			int x <- queen.grid_x + (dX at (i - 1));
+			// Is the x coordinate in range?
+			if (x < 0 or x >= numberOfQueens) {
+				continue;
 			}
+			// Is the y coordinate in range, and has this move not been taken?
+			int y <- queen.grid_y + (dY at (i - 1));
+			if (y < 0 or y >= numberOfQueens) {
+				continue;
+			}
+			ChessBoard cell <- ChessBoard[x, y];
+			// Is there a queen and/or is this move going to get us killed?
+			if (not utilIsMovePossible(cell, queens)) {
+				continue;
+			}
+			// If we've visited here before.
+			if (memory contains cell) {
+				continue;
+			}
+			// Yeah, this is fine.
+			add cell to: potential;
 		}
-		return possible;
 	}
 	
 	action utilIsMovePossible(ChessBoard candidate, list<ChessBoard> queens) type: bool {
