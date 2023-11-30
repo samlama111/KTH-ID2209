@@ -10,7 +10,7 @@ model Exercise3Task2
 
 
 global {
-    int numberOfPeople <- 5;
+    int numberOfPeople <- 1;
     int numberOfStages <- 3;
     int danceFloorRadius <- 5;
 
@@ -27,7 +27,23 @@ species Person skills: [fipa, moving] {
     float openingPreference <- rnd(0.0, 1.0);
     float familyPreference <- rnd(0.0, 1.0);
     float moshPreference <- rnd(0.0, 1.0);
+    float actExpiry <- -1.0; // Separate because otherwise agents are dead.
     Act chosenAct <- nil;
+    int pauseCounter <- 2; // Small pause to fake thinking.
+    
+    // Do we still hear music?
+    reflex listenMusic when: chosenAct != nil {
+    	// Oh no it expired.
+    	if (time = actExpiry) {
+    		// Set it to null, so we can ask again.
+    		chosenAct <- nil;
+    		pauseCounter <- 5;
+    	}
+    }
+    
+    reflex decrementPausecoutner when: chosenAct = nil and pauseCounter > 0 {
+    	pauseCounter <- pauseCounter - 1;
+    }
     
    	// We receive all the acts, and decide which one we want to go to!
     reflex processReceivedActs when: chosenAct = nil and !empty(informs) {
@@ -57,11 +73,13 @@ species Person skills: [fipa, moving] {
             }
         }
         chosenAct <- bestAct;
+        actExpiry <- chosenAct.expiry;
+        pauseCounter <- 0;
         write("[" + name + "] I have picked act " + bestAct + " with utility " + bestUtility);
     }
 
 	// Asks the stages for the acts that are currently being performed.
-    reflex determineActs when: chosenAct = nil {
+    reflex determineActs when: chosenAct = nil and pauseCounter <= 0 {
         do start_conversation to: list(Stage) protocol: 'fipa-query' performative: 'query' contents: ['acts']; 
     }
 
@@ -106,22 +124,23 @@ species Stage skills: [fipa] {
     reflex stageLoop {
     	// If there is no act, we must give one.
         if (currentAct = nil) {
-            create Act returns: createdAct;
-            currentAct <- createdAct[0];
-            currentAct <- currentAct.setLocation(self);
+	    	do newAct;
         }
-        //else if (current_act != nil) {
-        //    if (act_duration = 0) {
-        //       ask current_act {
-        //            do die;
-         //       }
-         //       current_act <- nil;
-         //       act_duration <- rnd(10, 40);
-          //  }
-           // else {
-            //    act_duration <- act_duration - 1;
-            //}
-       // }
+        // If there is an existing act that expired, make a new one.
+        // This must be EXPLICITLY greater so the listeners have a chance to switch.
+        if (currentAct != nil and time >= currentAct.expiry) {
+        	// Kill existing one.
+        	ask currentAct {
+        		do die;
+        	}
+        	currentAct <- nil;
+        }
+    }
+    
+    action newAct {
+    	create Act returns: createdAct;
+    	currentAct <- createdAct[0];
+     	currentAct <- currentAct.setLocation(self);
     }
 
     aspect base {
@@ -143,6 +162,7 @@ species Stage skills: [fipa] {
 }
 
 species Act {
+	float expiry <- time + rnd(100, 200);
     float lightshow <- rnd(0.0, 1.0);
     float speakers <- rnd(0.0, 1.0);
     float band <- rnd(0.0, 1.0);
