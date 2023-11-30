@@ -11,7 +11,7 @@ model Exercise3NQueens
 
 global {
 	
-	int numberOfQueens <- 13 min: 4 max: 20;
+	int numberOfQueens <- 14 min: 4 max: 20;
 
 	init {
 		int index <- 0;
@@ -130,36 +130,56 @@ species Queen skills: [fipa] {
 	//
 	
 	action utilGetPossibleLocations type: list<ChessBoard> {
-		list<ChessBoard> potential <- [];
-		// We divide into cases.
-		// This is to optimize.
-		// 1) First and last queen -- these ones can go ANYWHERE on the board.
-		// 2) All the other queens -- these ones can only take 2-1 (knight move) or 3-1 (???) positions from existing queens.
-		if (pred = nil or succ = nil) {
-			// Go through every possible cell on the board.
-			loop i from: 1 to: numberOfQueens {
-				loop j from: 1 to: numberOfQueens {
-					ChessBoard cell <- ChessBoard[i - 1, j - 1];
-					// If we've already been here, we skip.
-					if (memory contains cell) {
-						continue;
-					}
-					// If this conflicts with other queens (only last one).
-					if (succ = nil and not utilIsMovePossible(cell, others)) {
-						continue;
-					}
-					add cell to: potential;
-				}
+		list<ChessBoard> locations <- [];
+		// Go through every possible cell on its own row.
+		// We only let them go on its own row to allow backtracking.
+		// This should prefer a staircase pattern.
+		loop y from: 1 to: numberOfQueens {
+			ChessBoard cell <- ChessBoard[id, y - 1];
+			// If we've already been here, we skip.
+			if (memory contains cell) {
+				continue;
 			}
-		} else {
-			// For every queen, add the location that are a knight away.
-			loop other over: others {
-				do utilAddHopLocationsForQueen(2, potential, other, others);
-				do utilAddHopLocationsForQueen(3, potential, other, others);
+			// If this conflicts with other queens (only last one).
+			if (not utilIsMovePossible(cell, others)) {
+				continue;
 			}
+			add cell to: locations;
 		}
-		return potential;
+		return locations;
 	}
+	
+//	action utilGetPossibleLocations type: list<ChessBoard> {
+//		list<ChessBoard> potential <- [];
+//		// We divide into cases.
+//		// This is to optimize.
+//		// 1) First and last queen -- these ones can go ANYWHERE on the board.
+//		// 2) All the other queens -- these ones can only take 2-1 (knight move) or 3-1 (???) positions from existing queens.
+//		if (pred = nil or succ = nil) {
+//			// Go through every possible cell on the board.
+//			loop i from: 1 to: numberOfQueens {
+//				loop j from: 1 to: numberOfQueens {
+//					ChessBoard cell <- ChessBoard[i - 1, j - 1];
+//					// If we've already been here, we skip.
+//					if (memory contains cell) {
+//						continue;
+//					}
+//					// If this conflicts with other queens (only last one).
+//					if (succ = nil and not utilIsMovePossible(cell, others)) {
+//						continue;
+//					}
+//					add cell to: potential;
+//				}
+//			}
+//		} else {
+//			// For every queen, add the location that are a knight away.
+//			loop other over: others {
+//				do utilAddHopLocationsForQueen(2, potential, other, others);
+//				do utilAddHopLocationsForQueen(3, potential, other, others);
+//			}
+//		}
+//		return potential;
+//	}
 	
 	// https://www.geeksforgeeks.org/possible-moves-knight/
 	action utilAddHopLocationsForQueen(int n, list<ChessBoard> potential, ChessBoard queen, list<ChessBoard> queens) {
