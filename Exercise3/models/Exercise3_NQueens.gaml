@@ -11,7 +11,7 @@ model Exercise3NQueens
 
 global {
 	
-	int numberOfQueens <- 14 min: 4 max: 20;
+	int numberOfQueens <- 20 min: 4 max: 20;
 
 	init {
 		int index <- 0;
@@ -40,7 +40,7 @@ species Queen skills: [fipa] {
 	Queen pred;
 	Queen succ;
 	list<ChessBoard> others <- [];
-	list<ChessBoard> memory <- [];
+	list<int> memory <- [];
 	
 	//
 	// PASSIVE (NOT THE ONE BEING PLACED) FUNCTIONALITY.
@@ -101,7 +101,7 @@ species Queen skills: [fipa] {
 	action activeMakeMove(ChessBoard pos) {
 		// Perform the move!
 		myCell <- pos;
-		add pos to: memory;
+		add pos.grid_y to: memory;
 		write("[" + id + "] Going to: " + utilStr(pos));
 		// Let the next one be placed.
 		active <- false;
@@ -130,89 +130,39 @@ species Queen skills: [fipa] {
 	//
 	
 	action utilGetPossibleLocations type: list<ChessBoard> {
-		list<ChessBoard> locations <- [];
+		list<int> ys <- [];
 		// Go through every possible cell on its own row.
 		// We only let them go on its own row to allow backtracking.
-		// This should prefer a staircase pattern.
-		loop y from: 1 to: numberOfQueens {
-			ChessBoard cell <- ChessBoard[id, y - 1];
+		loop y1 from: 1 to: numberOfQueens {
 			// If we've already been here, we skip.
-			if (memory contains cell) {
+			int y <- y1 - 1;
+			if (memory contains y) {
 				continue;
 			}
 			// If this conflicts with other queens (only last one).
-			if (not utilIsMovePossible(cell, others)) {
+			if (not utilIsMovePossible(id, y, others)) {
 				continue;
 			}
-			add cell to: locations;
+			add y to: ys;
 		}
-		return locations;
+		// Optimization: prefer 2-3 away from predecessor.
+		int nextOpen;
+		if (pred != nil) {
+			nextOpen <- (last(others)).grid_y + 2;
+		} else {
+			nextOpen <- 0;
+		}
+		// Get the priorities.
+		list<int> preferrable <- ys where (each >= nextOpen);
+		list<int> suboptimal <- ys where (not (each in preferrable));
+		// Make the final list!
+		list<ChessBoard> potential <- (preferrable + suboptimal) accumulate (ChessBoard[id, each]);
+		return potential;
 	}
 	
-//	action utilGetPossibleLocations type: list<ChessBoard> {
-//		list<ChessBoard> potential <- [];
-//		// We divide into cases.
-//		// This is to optimize.
-//		// 1) First and last queen -- these ones can go ANYWHERE on the board.
-//		// 2) All the other queens -- these ones can only take 2-1 (knight move) or 3-1 (???) positions from existing queens.
-//		if (pred = nil or succ = nil) {
-//			// Go through every possible cell on the board.
-//			loop i from: 1 to: numberOfQueens {
-//				loop j from: 1 to: numberOfQueens {
-//					ChessBoard cell <- ChessBoard[i - 1, j - 1];
-//					// If we've already been here, we skip.
-//					if (memory contains cell) {
-//						continue;
-//					}
-//					// If this conflicts with other queens (only last one).
-//					if (succ = nil and not utilIsMovePossible(cell, others)) {
-//						continue;
-//					}
-//					add cell to: potential;
-//				}
-//			}
-//		} else {
-//			// For every queen, add the location that are a knight away.
-//			loop other over: others {
-//				do utilAddHopLocationsForQueen(2, potential, other, others);
-//				do utilAddHopLocationsForQueen(3, potential, other, others);
-//			}
-//		}
-//		return potential;
-//	}
-	
-	// https://www.geeksforgeeks.org/possible-moves-knight/
-	action utilAddHopLocationsForQueen(int n, list<ChessBoard> potential, ChessBoard queen, list<ChessBoard> queens) {
-		list<int> dX <- [n, 1, -1, -n, -n, -1, 1, n];
-		list<int> dY <- [1, n, n, 1, -1, -n, -n, -1];
-		loop i from: 1 to: 8 {
-			int x <- queen.grid_x + (dX at (i - 1));
-			// Is the x coordinate in range?
-			if (x < 0 or x >= numberOfQueens) {
-				continue;
-			}
-			// Is the y coordinate in range, and has this move not been taken?
-			int y <- queen.grid_y + (dY at (i - 1));
-			if (y < 0 or y >= numberOfQueens) {
-				continue;
-			}
-			ChessBoard cell <- ChessBoard[x, y];
-			// Is there a queen and/or is this move going to get us killed?
-			if (not utilIsMovePossible(cell, queens)) {
-				continue;
-			}
-			// If we've visited here before.
-			if (memory contains cell) {
-				continue;
-			}
-			// Yeah, this is fine.
-			add cell to: potential;
-		}
-	}
-	
-	action utilIsMovePossible(ChessBoard candidate, list<ChessBoard> queens) type: bool {
+	action utilIsMovePossible(int x1, int y1, list<ChessBoard> queens) type: bool {
 		loop queen over: queens {
-			bool killedHere <- utilsWillQueenBeKilled(candidate, queen);
+			bool killedHere <- utilsWillQueenBeKilled(x1, y1, queen);
 			if (killedHere) {
 				//write("" + candidate + " is incomp with " + queen);
 				return false;
@@ -222,9 +172,7 @@ species Queen skills: [fipa] {
 	}
 	
 	// https://stackoverflow.com/questions/41432956/checking-for-horizontal-vertical-and-diagonal-pairs-given-coordinates
-	action utilsWillQueenBeKilled(ChessBoard candidate, ChessBoard queen) type: bool {
-		int x1 <- candidate.grid_x;
-		int y1 <- candidate.grid_y;
+	action utilsWillQueenBeKilled(int x1, int y1, ChessBoard queen) type: bool {
 		int x2 <- queen.grid_x;
 		int y2 <- queen.grid_y;
 		int dy <- y2 - y1;
