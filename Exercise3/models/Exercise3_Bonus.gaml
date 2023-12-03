@@ -88,6 +88,9 @@ species Person skills: [fipa, moving] {
                 string _ <- i.contents;
                 do agree message: i contents: ['I am going somewhere'];
                 do inform message: i contents: [self, chosenAct, chosenUtility, crowdPreference];
+            } else if (i.contents[0] = 'goto') {
+            	chosenAct <- i.contents[1];
+            	write("[" + name + "] I am swapping to " + chosenAct);
             }
         }
     }
@@ -140,7 +143,7 @@ species Person skills: [fipa, moving] {
     reflex markAgreesAsRead when: !empty(agrees) {
     	// Clear out the mailbox.
 		loop i over: agrees {
-			string _ <- i.contents;
+			list _ <- i.contents;
 		}
     }
     
@@ -168,12 +171,28 @@ species Person skills: [fipa, moving] {
     		write("- " + p.name + " with utility " + ut + " and coefficient " + cr);
     		do registerPerson(acts, actToParticipants, p, a);
     	}
+    	write("- " + name + " with utility " + calculateUtility(chosenAct) + " and coefficient " + crowdPreference);
     	// Make sure to add self!!!
     	do registerPerson(acts, actToParticipants, self, chosenAct);
     	// Now we can optimize global utility.
     	float gCurrent <- calculateGlobalUtility(acts, actToParticipants);
-    	write("[" + name + "] Global utility is currently " + gCurrent);
-    	shouldOptimize <- true;
+    	write("[" + name + "] Global utility before potential swap is " + gCurrent);
+    	list<Person> swap <- findSwap(acts, actToParticipants, gCurrent);
+    	// Do we have a better arrangement?
+    	if (not empty(swap)) {
+    		Person i <- swap at 0;
+    		Person j <- swap at 1;
+    		Act iAct <- i.chosenAct;
+    		Act jAct <- j.chosenAct;
+    		// Tell them where to go.
+    		do start_conversation to: [i] protocol: 'fipa-query' performative: 'query' contents: ['goto', jAct];
+    		do start_conversation to: [j] protocol: 'fipa-query' performative: 'query' contents: ['goto', iAct];
+    		shouldOptimize <- false;
+    	} else {
+    		// Yeah let's stop here.
+    		shouldOptimize <- false;
+    		write("[" + name + "] Finished optimizing");
+    	}
     }
 	
 	// Registers a person and act pair to the data structure.
@@ -188,7 +207,55 @@ species Person skills: [fipa, moving] {
 		add p to: l;
 		m[a] <- l;
 	}
+	
+	// Finds a swap, if it exists, that improves global global utility the most.
+	action findSwap(list<Act> acts, map<Act, list<Person>> m, float curr) type: list<Person> {
+		list<Person> ps <- m accumulate (each);
+		float best <- curr;
+		list<Person> swap <- [];
+		// There will be symmetries, wontfix.
+		loop i over: ps {
+			loop j over: ps {
+				// Don't swap with self.
+				if (i = j) {
+					continue;
+				}
+				// Where are they?
+				Act iAct <- i.chosenAct;
+				Act jAct <- j.chosenAct;
+				// If same place, won't change anything, continue.
+				if (iAct = jAct) {
+					continue;
+				}
+				// Let's create a copy of our environment.
+				map<Act, list<Person>> n <- copy(m);
+				// Swap them.
+				list<Person> iList <- n[iAct];
+				remove i from: iList;
+				add j to: iList;
+				n[iAct] <- iList;
+				list<Person> jList <- n[jAct];
+				remove j from: jList;
+				add i to: jList;
+				n[jAct] <- jList;
+				// Is there a change in utility?
+				float newGUtility <- calculateGlobalUtility(acts, n);
+				if (newGUtility > best) {
+					write("we found a better arrangement");
+					write("old " + best);
+					write("new " + newGUtility);
+					best <- newGUtility;
+					swap <- [i, j];
+				}
+			}
+		}
+		if (not empty(swap)) {
+			write("[" + name + "] Global utility after potential swap is " + best);
+		}
+		return swap;
+	}
     
+    // Does what the name suggests.
     action calculateGlobalUtility(list<Act> acts, map<Act, list<Person>> m) type: float {
     	float u <- 0.0;
     	loop act over: acts {
