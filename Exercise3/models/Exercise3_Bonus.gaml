@@ -64,6 +64,23 @@ species Person skills: [fipa, moving] {
     	pauseCounter <- pauseCounter - 1;
     }
     
+    // Before the receiving of acts, so we don't get it twice.
+    reflex optimize when: shouldOptimize {
+    	// Do some optimizations!
+    	if (leader) {
+    		write("[" + name + "] Performing another round of optimizations");
+    		list<agent> targets <- [];
+    		loop i over: list(Person) {
+    			if (i.name != name) {
+    				add i to: targets;
+    			}
+    		}
+	    	do start_conversation to: targets protocol: 'fipa-query' performative: 'query' contents: ['target'];
+	    	// So we don't re-send until we get the response.
+	    	shouldOptimize <- false;
+    	}
+    }
+    
     // Do we need to say where we are going?
     reflex receiveQueries when: chosenAct != nil and !empty(queries) {
         loop i over: queries {
@@ -101,7 +118,7 @@ species Person skills: [fipa, moving] {
         actExpiry <- chosenAct.expiry;
         pauseCounter <- 0;
         write("[" + name + "] I have picked act " + bestAct + " with utility " + bestUtility);
-        shouldOptimize <- true;
+        shouldOptimize <- leader and true;
     }
     
     action calculateUtility(Act i) type: float {
@@ -114,7 +131,6 @@ species Person skills: [fipa, moving] {
         utility <- utility + (moshPreference * i.mosh);
         return utility;
     }
-
 	// Asks the stages for the acts that are currently being performed.
     reflex determineActs when: chosenAct = nil and pauseCounter <= 0 {
         do start_conversation to: list(Stage) protocol: 'fipa-query' performative: 'query' contents: ['acts']; 
@@ -137,23 +153,12 @@ species Person skills: [fipa, moving] {
     	do wander;
     }
     
-    reflex optimize when: shouldOptimize {
-    	// Do some optimizations!
-    	if (leader) {
-    		write("[" + name + "] Performing another round of optimizations");
-    		list<agent> targets <- [];
-    		loop i over: list(Person) {
-    			if (i.name != name) {
-    				add i to: targets;
-    			}
-    		}
-	    	do start_conversation to: targets protocol: 'fipa-query' performative: 'query' contents: ['target'];
-    	}
-    }
-    
     // Leader and needs to figure out where all of the others are going.
     reflex processReceivedGoals when: chosenAct != nil and leader and !empty(informs) {
-    	write("[" + name + "] Got the information from all agents");
+    	write("[" + name + "] Got the information from all other agents");
+    	// Keep track of all the acts' participants.
+    	list<Act> acts <- []; // No idea how to get keys otherwise.
+    	map<Act, list<Person>> actToParticipants <- [];
     	// Read all of the information.
     	loop i over: informs {
     		Person p <- i.contents[0];
@@ -161,7 +166,44 @@ species Person skills: [fipa, moving] {
     		float ut <- float(i.contents[2]);
     		float cr <- float(i.contents[3]);
     		write("- " + p.name + " with utility " + ut + " and coefficient " + cr);
+    		do registerPerson(acts, actToParticipants, p, a);
     	}
+    	// Make sure to add self!!!
+    	do registerPerson(acts, actToParticipants, self, chosenAct);
+    	// Now we can optimize global utility.
+    	float gCurrent <- calculateGlobalUtility(acts, actToParticipants);
+    	write("[" + name + "] Global utility is currently " + gCurrent);
+    	shouldOptimize <- true;
+    }
+	
+	// Registers a person and act pair to the data structure.
+	action registerPerson(list<Act> acts, map<Act, list<Person>> m, Person p, Act a) {
+		if (not (acts contains a)) {
+			add a to: acts;
+		}
+		list<Person> l <- m[a];
+		if (l = nil) {
+			l <- [];
+		}
+		add p to: l;
+		m[a] <- l;
+	}
+    
+    action calculateGlobalUtility(list<Act> acts, map<Act, list<Person>> m) type: float {
+    	float u <- 0.0;
+    	loop act over: acts {
+    		list<Person> ps <- m[act];
+    		if (ps = nil or empty(ps)) {
+    			continue;
+    		}
+    		float crowd <- length(ps) / numberOfPeople;
+    		loop p over: ps {
+    			float pu <- p.calculateUtility(act);
+    			float cu <- p.crowdPreference * crowd;
+    			u <- u + pu + cu;
+    		}
+    	}
+    	return u;
     }
     
     aspect base {
