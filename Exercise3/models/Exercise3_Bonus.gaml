@@ -41,13 +41,13 @@ species Person skills: [fipa, moving] {
     float openingPreference <- rnd(0.0, 1.0);
     float familyPreference <- rnd(0.0, 1.0);
     float moshPreference <- rnd(0.0, 1.0);
-    float crowdPreference <- rnd(-1.0, 1.0);
+    float crowdPreference <- rnd(-2.0, 2.0);
     float actExpiry <- -1.0; // Separate because otherwise agents are dead.
     Act chosenAct <- nil;
     float chosenUtility <- -1.0;
     int pauseCounter <- 2; // Small pause to fake thinking.
     bool leader <- false;
-    bool shouldOptimize <- false;
+    string optimization <- "noop" among: ["tosend", "waiting", "sent", "noop"];
     
     // Do we still hear music?
     reflex listenMusic when: chosenAct != nil {
@@ -55,7 +55,7 @@ species Person skills: [fipa, moving] {
     	if (time = actExpiry) {
     		// Set it to null, so we can ask again.
     		chosenAct <- nil;
-    		shouldOptimize <- true;
+    		optimization <- "noop";
     		pauseCounter <- 5;
     	}
     }
@@ -65,7 +65,7 @@ species Person skills: [fipa, moving] {
     }
     
     // Before the receiving of acts, so we don't get it twice.
-    reflex optimize when: shouldOptimize {
+    reflex optimize when: optimization = "tosend" {
     	// Do some optimizations!
     	if (leader) {
     		write("[" + name + "] Performing another round of optimizations");
@@ -77,8 +77,24 @@ species Person skills: [fipa, moving] {
     		}
 	    	do start_conversation to: targets protocol: 'fipa-query' performative: 'query' contents: ['target'];
 	    	// So we don't re-send until we get the response.
-	    	shouldOptimize <- false;
+	    	optimization <- "waiting";
     	}
+    }
+    
+    reflex processMovedConfirmations when: chosenAct != nil and optimization = "sent" and !empty(agrees) {
+    	loop i over: agrees {
+			list _ <- i.contents;
+		}
+    }
+    
+    // The agents have moved, so we need to do another cycle.
+    reflex processMovedAgents when: chosenAct != nil and optimization = "sent" and !empty(informs) {
+    	loop i over: informs {
+    		list _ <- i.contents;
+    		write(_);
+    	}
+    	// Someone moved, let's do another round of optimizations.
+    	optimization <- "tosend";
     }
     
     // Do we need to say where we are going?
@@ -91,12 +107,14 @@ species Person skills: [fipa, moving] {
             } else if (i.contents[0] = 'goto') {
             	chosenAct <- i.contents[1];
             	write("[" + name + "] I am swapping to " + chosenAct);
+            	do agree message: i contents: ['Moving there'];
+                do inform message: i contents: [chosenAct];
             }
         }
     }
     
    	// We receive all the acts, and decide which one we want to go to!
-    reflex processReceivedActs when: chosenAct = nil and !empty(informs) {
+    reflex processReceivedActs when: chosenAct = nil and optimization = "noop" and !empty(informs) {
         write("[" + name + "] Received information from " + length(informs) + " stages on what the acts are");
         list<Act> options <- [];
         // Read all of the possibilities.
@@ -106,7 +124,7 @@ species Person skills: [fipa, moving] {
         }
         // Choose the one that will provide the highest utility to us.
         Act bestAct <- nil;
-        float bestUtility <- -2.0;
+        float bestUtility <- -100.0;
     	write("[" + name + "] Utilities are:");
         loop i over: options {
             float utility <- calculateUtility(i);
@@ -121,7 +139,7 @@ species Person skills: [fipa, moving] {
         actExpiry <- chosenAct.expiry;
         pauseCounter <- 0;
         write("[" + name + "] I have picked act " + bestAct + " with utility " + bestUtility);
-        shouldOptimize <- leader and true;
+        optimization <- "tosend";
     }
     
     action calculateUtility(Act i) type: float {
@@ -140,7 +158,7 @@ species Person skills: [fipa, moving] {
     }
 
 	// Part of the FIPA protocol, but we don't do any of this.
-    reflex markAgreesAsRead when: !empty(agrees) {
+    reflex markAgreesAsRead when: optimization = "noop" and !empty(agrees) {
     	// Clear out the mailbox.
 		loop i over: agrees {
 			list _ <- i.contents;
@@ -157,7 +175,7 @@ species Person skills: [fipa, moving] {
     }
     
     // Leader and needs to figure out where all of the others are going.
-    reflex processReceivedGoals when: chosenAct != nil and leader and !empty(informs) {
+    reflex processReceivedGoals when: chosenAct != nil and optimization = "waiting" and !empty(informs) {
     	write("[" + name + "] Got the information from all other agents");
     	// Keep track of all the acts' participants.
     	list<Act> acts <- []; // No idea how to get keys otherwise.
@@ -185,13 +203,26 @@ species Person skills: [fipa, moving] {
     		Act iAct <- i.chosenAct;
     		Act jAct <- j.chosenAct;
     		// Tell them where to go.
+    		do sendSwap(i, iAct, j, jAct);
+    	}
+		// Stop here.
+		// If someone moved, then this will start another tosend chain.
+		optimization <- "sent";
+    }
+    
+    // Swap depends on who self is, sending messages to self is a bit crazy.
+    action sendSwap(Person i, Act iAct, Person j, Act jAct) {
+    	if (i = self) {
+    		chosenAct <- jAct;
+    		do start_conversation to: [j] protocol: 'fipa-query' performative: 'query' contents: ['goto', iAct];
+    		write("[" + name + "] I am swapping to " + chosenAct);
+    	} else if (j = self) {
+    		do start_conversation to: [i] protocol: 'fipa-query' performative: 'query' contents: ['goto', jAct];
+    		chosenAct <- jAct;
+    		write("[" + name + "] I am swapping to " + chosenAct);
+    	} else {
     		do start_conversation to: [i] protocol: 'fipa-query' performative: 'query' contents: ['goto', jAct];
     		do start_conversation to: [j] protocol: 'fipa-query' performative: 'query' contents: ['goto', iAct];
-    		shouldOptimize <- false;
-    	} else {
-    		// Yeah let's stop here.
-    		shouldOptimize <- false;
-    		write("[" + name + "] Finished optimizing");
     	}
     }
 	
@@ -241,9 +272,6 @@ species Person skills: [fipa, moving] {
 				// Is there a change in utility?
 				float newGUtility <- calculateGlobalUtility(acts, n);
 				if (newGUtility > best) {
-					write("we found a better arrangement");
-					write("old " + best);
-					write("new " + newGUtility);
 					best <- newGUtility;
 					swap <- [i, j];
 				}
