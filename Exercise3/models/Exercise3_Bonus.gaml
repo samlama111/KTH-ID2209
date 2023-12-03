@@ -90,8 +90,8 @@ species Person skills: [fipa, moving] {
     // The agents have moved, so we need to do another cycle.
     reflex processMovedAgents when: chosenAct != nil and optimization = "sent" and !empty(informs) {
     	loop i over: informs {
-    		list _ <- i.contents;
-    		write(_);
+    		list c <- i.contents;
+    		write(c);
     	}
     	// Someone moved, let's do another round of optimizations.
     	optimization <- "tosend";
