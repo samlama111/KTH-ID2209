@@ -23,7 +23,7 @@ model Exercise3Bonus
 
 
 global {
-    int numberOfPeople <- 2;
+    int numberOfPeople <- 3;
     int numberOfStages <- 3;
     int danceFloorRadius <- 5;
 
@@ -91,7 +91,6 @@ species Person skills: [fipa, moving] {
     reflex processMovedAgents when: chosenAct != nil and optimization = "sent" and !empty(informs) {
     	loop i over: informs {
     		list c <- i.contents;
-    		write(c);
     	}
     	// Someone moved, let's do another round of optimizations.
     	optimization <- "tosend";
@@ -192,6 +191,7 @@ species Person skills: [fipa, moving] {
     	write("- " + name + " with utility " + calculateUtility(chosenAct) + " and coefficient " + crowdPreference);
     	// Make sure to add self!!!
     	do registerPerson(acts, actToParticipants, self, chosenAct);
+    	write(actToParticipants);
     	// Now we can optimize global utility.
     	float gCurrent <- calculateGlobalUtility(acts, actToParticipants);
     	write("[" + name + "] Global utility before potential swap is " + gCurrent);
@@ -218,7 +218,7 @@ species Person skills: [fipa, moving] {
     		write("[" + name + "] I am swapping to " + chosenAct);
     	} else if (j = self) {
     		do start_conversation to: [i] protocol: 'fipa-query' performative: 'query' contents: ['goto', jAct];
-    		chosenAct <- jAct;
+    		chosenAct <- iAct;
     		write("[" + name + "] I am swapping to " + chosenAct);
     	} else {
     		do start_conversation to: [i] protocol: 'fipa-query' performative: 'query' contents: ['goto', jAct];
@@ -261,11 +261,11 @@ species Person skills: [fipa, moving] {
 				// Let's create a copy of our environment.
 				map<Act, list<Person>> n <- copy(m);
 				// Swap them.
-				list<Person> iList <- n[iAct];
+				list<Person> iList <- copy(n[iAct]);
 				remove i from: iList;
 				add j to: iList;
 				n[iAct] <- iList;
-				list<Person> jList <- n[jAct];
+				list<Person> jList <- copy(n[jAct]);
 				remove j from: jList;
 				add i to: jList;
 				n[jAct] <- jList;
